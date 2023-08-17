@@ -5,6 +5,7 @@ from source.preprocessing.activity_count.activity_count_feature_service import A
 from source.preprocessing.heart_rate.heart_rate_feature_service import HeartRateFeatureService
 from source.preprocessing.psg.psg_label_service import PSGLabelService
 from source.preprocessing.time.time_based_feature_service import TimeBasedFeatureService
+import pandas as pd
 
 
 class SubjectBuilder(object):
@@ -34,7 +35,9 @@ class SubjectBuilder(object):
 
     @staticmethod
     def build(subject_id):
+        print(subject_id)
         feature_count = ActivityCountFeatureService.load(subject_id)
+        print(feature_count)
         feature_hr = HeartRateFeatureService.load(subject_id)
         feature_time = TimeBasedFeatureService.load_time(subject_id)
         if Constants.INCLUDE_CIRCADIAN:
@@ -49,7 +52,11 @@ class SubjectBuilder(object):
                               FeatureType.time: feature_time,
                               FeatureType.circadian_model: feature_circadian,
                               FeatureType.cosine: feature_cosine}
-
+        columns = ['count', 'hr', 'time', 'cosine', 'sleep_label']
+        user_dataframe = pd.DataFrame(
+            list(zip(feature_count, feature_hr, feature_time, feature_cosine, labeled_sleep)),
+            columns=columns)
+        user_dataframe.to_csv(f'{subject_id}.csv')
         subject = Subject(subject_id=subject_id,
                           labeled_sleep=labeled_sleep,
                           feature_dictionary=feature_dictionary)
