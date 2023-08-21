@@ -1,6 +1,7 @@
 import time
 
 import pandas as pd
+import tensorflow
 from torch.utils.data import Dataset
 from sklearn.preprocessing import StandardScaler
 from avalanche.benchmarks.generators import dataset_benchmark, nc_benchmark
@@ -34,12 +35,10 @@ class FeatureDataset(Dataset):
         sc = StandardScaler()
         x_train = sc.fit_transform(x)
         y_train = y
+        print(x_train)
 
-
-        self.data = (torch.tensor(x_train,dtype=torch.float)).type(torch.LongTensor)
+        self.data = torch.tensor(x_train,dtype=torch.float32)
         print(self.data.dtype)
-
-        # print(self.data.shape)
         self.targets = torch.tensor(y_train)
 
     def __len__(self):
@@ -52,10 +51,11 @@ class FeatureDataset(Dataset):
 class Classifier(nn.Module):
     def __init__(self, in_dim, hidden_dim, out_dim):
         super(Classifier, self).__init__()
-        print(type(input))
+        torch.set_default_dtype(torch.float32)
+
         self.linear1 = nn.Linear(in_dim, hidden_dim)
         print(self.linear1.weight.dtype)
-        self.linear2 = nn.Linear(hidden_dim, out_dim)
+        self.linear2 = nn.Linear(hidden_dim, out_dim).double()
         print(self.linear2.weight.dtype)
 
     def forward(self, x):
