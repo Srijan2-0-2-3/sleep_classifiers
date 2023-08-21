@@ -25,15 +25,21 @@ class FeatureDataset(Dataset):
     def __init__(self, file_name):
         df = pd.read_csv(file_name, index_col=0)
         num_rows = df.shape[0]
+        # print(df.head())
 
-        x = df.iloc[1:num_rows, 0:3].values
+        x = df.iloc[1:num_rows, 0:4].values
+        # print(x)
         y = df.iloc[1:num_rows, 4].values
 
         sc = StandardScaler()
         x_train = sc.fit_transform(x)
         y_train = y
 
-        self.data = torch.tensor(x_train)
+
+        self.data = (torch.tensor(x_train,dtype=torch.float)).type(torch.LongTensor)
+        print(self.data.dtype)
+
+        # print(self.data.shape)
         self.targets = torch.tensor(y_train)
 
     def __len__(self):
@@ -43,6 +49,35 @@ class FeatureDataset(Dataset):
         return self.data[idx], self.targets[idx]
 
 
+class Classifier(nn.Module):
+    def __init__(self, in_dim, hidden_dim, out_dim):
+        super(Classifier, self).__init__()
+        print(type(input))
+        self.linear1 = nn.Linear(in_dim, hidden_dim)
+        print(self.linear1.weight.dtype)
+        self.linear2 = nn.Linear(hidden_dim, out_dim)
+        print(self.linear2.weight.dtype)
+
+    def forward(self, x):
+        x = torch.sigmoid(self.linear1(x))
+        print(type(x))
+        x = self.linear2(x)
+        return x
+# class Classifier(nn.Module):
+# 	def __init__(self, in_dim, hidden_dim, out_dim, layers=1):
+# 		super().__init__()
+# 		self.rnn = nn.GRU(in_dim, hidden_dim, layers, batch_first=True)
+# 		self.clf = nn.Linear(hidden_dim, out_dim)
+#
+# 	def forward(self, x):
+# 		# batch_size first
+# 		x, _ = self.rnn(x)  # _ to ignore state
+# 		x = x[:, -1]  # last timestep for classfication
+# 		return self.clf(x)
+
+import warnings
+
+warnings.filterwarnings("ignore")
 def avalanche_method(strat, i):
     device = torch.device('cpu')
     subject_ids = SubjectBuilder.get_all_subject_ids()
@@ -73,7 +108,9 @@ def avalanche_method(strat, i):
     es = EarlyStoppingPlugin(patience=25, val_stream_name="train_stream")
 
     results = []
-    model = SimpleMLP(num_classes=6)
+    # model = SimpleMLP(num_classes=6)
+    model = Classifier(in_dim=4, hidden_dim=8, out_dim=1)
+    print(model)
 
     if (strat == "naive"):
         print("Naive continual learning")
