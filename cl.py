@@ -1,6 +1,8 @@
 import time
 
+import numpy as np
 import pandas as pd
+import tensorflow
 from torch.utils.data import Dataset
 from sklearn.preprocessing import StandardScaler
 from avalanche.benchmarks.generators import dataset_benchmark, nc_benchmark
@@ -16,7 +18,11 @@ from avalanche.logging import InteractiveLogger, TextLogger, TensorboardLogger
 import pickle
 import torch.nn as nn
 import torch
+import warnings
 
+warnings.filterwarnings("ignore")
+
+from source.analysis.setup.feature_type import FeatureType
 from source.analysis.setup.subject_builder import SubjectBuilder
 from source.analysis.setup.train_test_splitter import TrainTestSplitter
 
@@ -24,27 +30,37 @@ from source.analysis.setup.train_test_splitter import TrainTestSplitter
 class FeatureDataset(Dataset):
     def __init__(self, subject_id):
         subject = SubjectBuilder.build(subject_id)
-        print(subject.subject_id)
-        # print(subject.feature_dictionary)
-        # print(subject.labeled_sleep)
-        feature_dictionary = torch.Tensor(subject.feature_dictionary)
-        labeled_sleep = torch.Tensor(subject.labeled_sleep)
-        print(type(labeled_sleep))
-    #     x = df.iloc[1:num_rows, 0:3].values
-    #     y = df.iloc[1:num_rows, 4].values
-    #
-    #     sc = StandardScaler()
-    #     x_train = sc.fit_transform(x)
-    #     y_train = y
-    #
-    #     self.data = torch.tensor(x_train)
-    #     self.targets = torch.tensor(y_train)
-    #
-    # def __len__(self):
-    #     return len(self.targets)
-    #
-    # def __getitem__(self, idx):
-    #     return self.data[idx], self.targets[idx]
+        x = []
+        for feature in subject.feature_dictionary.keys():
+            x.append(subject.feature_dictionary[feature])
+
+        self.data = torch.tensor(np.transpose((np.array(x))), dtype=torch.float32)
+        # print(self.data.dtype)
+        self.targets = torch.tensor(subject.labeled_sleep)
+
+    def __len__(self):
+        return len(self.targets)
+
+    def __getitem__(self, idx):
+        return self.data[idx], self.targets[idx]
+
+
+class Classifier(nn.Module):
+    def __init__(self, in_dim, hidden_dim, out_dim):
+        super(Classifier, self).__init__()
+        print('init')
+        self.linear1 = nn.Linear(in_dim, hidden_dim)
+        print(self.linear1.weight.dtype)
+        self.linear2 = nn.Linear(hidden_dim, out_dim)
+        print(self.linear2.weight.dtype)
+
+    def forward(self, x):
+        print('forward')
+        x = torch.sigmoid(self.linear1(x))
+        print(x.dtype)
+        x = self.linear2(x)
+        print(x.dtype)
+        return x
 
 
 def avalanche_method(strat, i):
@@ -77,7 +93,9 @@ def avalanche_method(strat, i):
     es = EarlyStoppingPlugin(patience=25, val_stream_name="train_stream")
 
     results = []
-    model = SimpleMLP(num_classes=6)
+    # model = SimpleMLP(num_classes=6)
+    model = Classifier(in_dim=4, hidden_dim=8, out_dim=1)
+    print(model)
 
     if (strat == "naive"):
         print("Naive continual learning")
