@@ -1,5 +1,6 @@
 import time
 
+import numpy as np
 import pandas as pd
 import tensorflow
 from torch.utils.data import Dataset
@@ -32,8 +33,9 @@ class FeatureDataset(Dataset):
         x = []
         for feature in subject.feature_dictionary.keys():
             x.append(subject.feature_dictionary[feature])
-        self.data = torch.tensor(x, dtype=torch.float32)
-        print(len(self.data))
+
+        self.data = torch.tensor(np.transpose((np.array(x))), dtype=torch.float32)
+        # print(self.data.dtype)
         self.targets = torch.tensor(subject.labeled_sleep)
 
     def __len__(self):
@@ -46,13 +48,18 @@ class FeatureDataset(Dataset):
 class Classifier(nn.Module):
     def __init__(self, in_dim, hidden_dim, out_dim):
         super(Classifier, self).__init__()
+        print('init')
         self.linear1 = nn.Linear(in_dim, hidden_dim)
+        print(self.linear1.weight.dtype)
         self.linear2 = nn.Linear(hidden_dim, out_dim)
+        print(self.linear2.weight.dtype)
 
     def forward(self, x):
+        print('forward')
         x = torch.sigmoid(self.linear1(x))
-        print(type(x))
+        print(x.dtype)
         x = self.linear2(x)
+        print(x.dtype)
         return x
 
 
