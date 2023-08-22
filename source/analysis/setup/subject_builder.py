@@ -35,22 +35,22 @@ class SubjectBuilder(object):
 
     @staticmethod
     def build(subject_id):
-        print(subject_id)
-        feature_count = ActivityCountFeatureService.load(subject_id)
-        print(feature_count)
-        feature_hr = HeartRateFeatureService.load(subject_id)
-        feature_time = TimeBasedFeatureService.load_time(subject_id)
+        # print(subject_id)
+        feature_count = ActivityCountFeatureService.load(subject_id).flatten()
+        # print(feature_count)
+        feature_hr = HeartRateFeatureService.load(subject_id).flatten()
+        feature_time = TimeBasedFeatureService.load_time(subject_id).flatten()
         if Constants.INCLUDE_CIRCADIAN:
             feature_circadian = TimeBasedFeatureService.load_circadian_model(subject_id)
         else:
             feature_circadian = None
-        feature_cosine = TimeBasedFeatureService.load_cosine(subject_id)
-        labeled_sleep = PSGLabelService.load(subject_id)
+        feature_cosine = TimeBasedFeatureService.load_cosine(subject_id).flatten()
+        labeled_sleep = PSGLabelService.load(subject_id).flatten()
 
         feature_dictionary = {FeatureType.count: feature_count,
                               FeatureType.heart_rate: feature_hr,
                               FeatureType.time: feature_time,
-                              FeatureType.circadian_model: feature_circadian,
+                              # FeatureType.circadian_model: feature_circadian,
                               FeatureType.cosine: feature_cosine}
         columns = ['count', 'hr', 'time', 'cosine', 'sleep_label']
         user_dataframe = pd.DataFrame(

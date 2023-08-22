@@ -17,29 +17,24 @@ from avalanche.logging import InteractiveLogger, TextLogger, TensorboardLogger
 import pickle
 import torch.nn as nn
 import torch
+import warnings
 
+warnings.filterwarnings("ignore")
+
+from source.analysis.setup.feature_type import FeatureType
 from source.analysis.setup.subject_builder import SubjectBuilder
 from source.analysis.setup.train_test_splitter import TrainTestSplitter
 
 
 class FeatureDataset(Dataset):
-    def __init__(self, file_name):
-        df = pd.read_csv(file_name, index_col=0)
-        num_rows = df.shape[0]
-        # print(df.head())
-
-        x = df.iloc[1:num_rows, 0:4].values
-        # print(x)
-        y = df.iloc[1:num_rows, 4].values
-
-        sc = StandardScaler()
-        x_train = sc.fit_transform(x)
-        y_train = y
-        print(x_train)
-
-        self.data = torch.tensor(x_train,dtype=torch.float32)
-        print(self.data.dtype)
-        self.targets = torch.tensor(y_train)
+    def __init__(self, subject_id):
+        subject = SubjectBuilder.build(subject_id)
+        x = []
+        for feature in subject.feature_dictionary.keys():
+            x.append(subject.feature_dictionary[feature])
+        self.data = torch.tensor(x, dtype=torch.float32)
+        print(len(self.data))
+        self.targets = torch.tensor(subject.labeled_sleep)
 
     def __len__(self):
         return len(self.targets)
@@ -51,33 +46,16 @@ class FeatureDataset(Dataset):
 class Classifier(nn.Module):
     def __init__(self, in_dim, hidden_dim, out_dim):
         super(Classifier, self).__init__()
-        torch.set_default_dtype(torch.float32)
-
         self.linear1 = nn.Linear(in_dim, hidden_dim)
-        print(self.linear1.weight.dtype)
-        self.linear2 = nn.Linear(hidden_dim, out_dim).double()
-        print(self.linear2.weight.dtype)
+        self.linear2 = nn.Linear(hidden_dim, out_dim)
 
     def forward(self, x):
         x = torch.sigmoid(self.linear1(x))
         print(type(x))
         x = self.linear2(x)
         return x
-# class Classifier(nn.Module):
-# 	def __init__(self, in_dim, hidden_dim, out_dim, layers=1):
-# 		super().__init__()
-# 		self.rnn = nn.GRU(in_dim, hidden_dim, layers, batch_first=True)
-# 		self.clf = nn.Linear(hidden_dim, out_dim)
-#
-# 	def forward(self, x):
-# 		# batch_size first
-# 		x, _ = self.rnn(x)  # _ to ignore state
-# 		x = x[:, -1]  # last timestep for classfication
-# 		return self.clf(x)
 
-import warnings
 
-warnings.filterwarnings("ignore")
 def avalanche_method(strat, i):
     device = torch.device('cpu')
     subject_ids = SubjectBuilder.get_all_subject_ids()
@@ -87,8 +65,8 @@ def avalanche_method(strat, i):
     # print(training_dataset)
     test_set = data_splits[0].testing_set
     # testing_set =
-    scenario = dataset_benchmark(train_datasets=[FeatureDataset(f'{subject_id}.csv') for subject_id in train_set],
-                                 test_datasets=[FeatureDataset(f'{subject_id}.csv') for subject_id in test_set])
+    scenario = dataset_benchmark(train_datasets=[FeatureDataset(subject_id) for subject_id in train_set],
+                                 test_datasets=[FeatureDataset(subject_id) for subject_id in test_set])
 
     tb_logger = TensorboardLogger()
     text_logger = TextLogger(open('wesadlog.txt', 'a'))
