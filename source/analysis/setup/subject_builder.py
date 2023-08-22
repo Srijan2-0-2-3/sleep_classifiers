@@ -35,9 +35,9 @@ class SubjectBuilder(object):
 
     @staticmethod
     def build(subject_id):
-        print(subject_id)
+        # print(subject_id)
         feature_count = ActivityCountFeatureService.load(subject_id)
-        print(feature_count)
+        # print(feature_count)
         feature_hr = HeartRateFeatureService.load(subject_id)
         feature_time = TimeBasedFeatureService.load_time(subject_id)
         if Constants.INCLUDE_CIRCADIAN:

@@ -22,25 +22,29 @@ from source.analysis.setup.train_test_splitter import TrainTestSplitter
 
 
 class FeatureDataset(Dataset):
-    def __init__(self, file_name):
-        df = pd.read_csv(file_name, index_col=0)
-        num_rows = df.shape[0]
-
-        x = df.iloc[1:num_rows, 0:3].values
-        y = df.iloc[1:num_rows, 4].values
-
-        sc = StandardScaler()
-        x_train = sc.fit_transform(x)
-        y_train = y
-
-        self.data = torch.tensor(x_train)
-        self.targets = torch.tensor(y_train)
-
-    def __len__(self):
-        return len(self.targets)
-
-    def __getitem__(self, idx):
-        return self.data[idx], self.targets[idx]
+    def __init__(self, subject_id):
+        subject = SubjectBuilder.build(subject_id)
+        print(subject.subject_id)
+        # print(subject.feature_dictionary)
+        # print(subject.labeled_sleep)
+        feature_dictionary = torch.Tensor(subject.feature_dictionary)
+        labeled_sleep = torch.Tensor(subject.labeled_sleep)
+        print(type(labeled_sleep))
+    #     x = df.iloc[1:num_rows, 0:3].values
+    #     y = df.iloc[1:num_rows, 4].values
+    #
+    #     sc = StandardScaler()
+    #     x_train = sc.fit_transform(x)
+    #     y_train = y
+    #
+    #     self.data = torch.tensor(x_train)
+    #     self.targets = torch.tensor(y_train)
+    #
+    # def __len__(self):
+    #     return len(self.targets)
+    #
+    # def __getitem__(self, idx):
+    #     return self.data[idx], self.targets[idx]
 
 
 def avalanche_method(strat, i):
@@ -52,8 +56,8 @@ def avalanche_method(strat, i):
     # print(training_dataset)
     test_set = data_splits[0].testing_set
     # testing_set =
-    scenario = dataset_benchmark(train_datasets=[FeatureDataset(f'{subject_id}.csv') for subject_id in train_set],
-                                 test_datasets=[FeatureDataset(f'{subject_id}.csv') for subject_id in test_set])
+    scenario = dataset_benchmark(train_datasets=[FeatureDataset(subject_id) for subject_id in train_set],
+                                 test_datasets=[FeatureDataset(subject_id) for subject_id in test_set])
 
     tb_logger = TensorboardLogger()
     text_logger = TextLogger(open('wesadlog.txt', 'a'))
