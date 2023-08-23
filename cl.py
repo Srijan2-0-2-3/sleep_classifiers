@@ -31,6 +31,7 @@ class FeatureDataset(Dataset):
     def __init__(self, subject_id):
         subject = SubjectBuilder.build(subject_id)
         x = []
+        # print(subject.feature_dictionary[FeatureType.heart_rate])
         for feature in subject.feature_dictionary.keys():
             x.append(subject.feature_dictionary[feature])
 
@@ -48,18 +49,16 @@ class FeatureDataset(Dataset):
 class Classifier(nn.Module):
     def __init__(self, in_dim, hidden_dim, out_dim):
         super(Classifier, self).__init__()
-        print('init')
+        # print('init')
         self.linear1 = nn.Linear(in_dim, hidden_dim)
-        print(self.linear1.weight.dtype)
+        # print(self.linear1.weight.dtype)
         self.linear2 = nn.Linear(hidden_dim, out_dim)
-        print(self.linear2.weight.dtype)
+        # print(self.linear2.weight.dtype)
 
     def forward(self, x):
-        print('forward')
+        # print('forward')
         x = torch.sigmoid(self.linear1(x))
-        print(x.dtype)
-        x = self.linear2(x)
-        print(x.dtype)
+        x = self.linear2(x).flatten()
         return x
 
 
@@ -76,7 +75,7 @@ def avalanche_method(strat, i):
                                  test_datasets=[FeatureDataset(subject_id) for subject_id in test_set])
 
     tb_logger = TensorboardLogger()
-    text_logger = TextLogger(open('wesadlog.txt', 'a'))
+    text_logger = TextLogger(open('sleep_classifier_log.txt', 'a'))
     int_logger = InteractiveLogger()
 
     eval_plugin = EvaluationPlugin(
