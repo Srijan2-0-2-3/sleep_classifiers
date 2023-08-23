@@ -17,7 +17,6 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-
 from source.analysis.setup.subject_builder import SubjectBuilder
 from source.analysis.setup.train_test_splitter import TrainTestSplitter
 
