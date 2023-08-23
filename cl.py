@@ -1,18 +1,13 @@
 import time
 
 import numpy as np
-import pandas as pd
-import tensorflow
 from torch.utils.data import Dataset
-from sklearn.preprocessing import StandardScaler
 from avalanche.benchmarks.generators import dataset_benchmark, nc_benchmark
-from avalanche.benchmarks.utils import AvalancheDataset, make_classification_dataset
-from avalanche.models import SimpleMLP
 from avalanche.training.supervised import Naive, Cumulative, LwF, EWC, JointTraining, GEM, Replay
 from torch.optim import Adam
 from torch.nn import CrossEntropyLoss, MSELoss
 from avalanche.evaluation.metrics import forgetting_metrics, accuracy_metrics, loss_metrics, timing_metrics, \
-    cpu_usage_metrics, confusion_matrix_metrics, disk_usage_metrics, gpu_usage_metrics
+    cpu_usage_metrics, disk_usage_metrics, gpu_usage_metrics
 from avalanche.training.plugins import EvaluationPlugin, EarlyStoppingPlugin
 from avalanche.logging import InteractiveLogger, TextLogger, TensorboardLogger
 import pickle
@@ -22,7 +17,7 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-from source.analysis.setup.feature_type import FeatureType
+
 from source.analysis.setup.subject_builder import SubjectBuilder
 from source.analysis.setup.train_test_splitter import TrainTestSplitter
 
@@ -31,12 +26,10 @@ class FeatureDataset(Dataset):
     def __init__(self, subject_id):
         subject = SubjectBuilder.build(subject_id)
         x = []
-        # print(subject.feature_dictionary[FeatureType.heart_rate])
         for feature in subject.feature_dictionary.keys():
             x.append(subject.feature_dictionary[feature])
 
         self.data = torch.tensor(np.transpose((np.array(x))), dtype=torch.float32)
-        # print(self.data.dtype)
         self.targets = torch.tensor(subject.labeled_sleep)
 
     def __len__(self):
@@ -67,10 +60,7 @@ def avalanche_method(strat, i):
     subject_ids = SubjectBuilder.get_all_subject_ids()
     data_splits = TrainTestSplitter.leave_one_out(subject_ids)
     train_set = data_splits[0].training_set
-    # training_dataset =
-    # print(training_dataset)
     test_set = data_splits[0].testing_set
-    # testing_set =
     scenario = dataset_benchmark(train_datasets=[FeatureDataset(subject_id) for subject_id in train_set],
                                  test_datasets=[FeatureDataset(subject_id) for subject_id in test_set])
 
@@ -92,9 +82,7 @@ def avalanche_method(strat, i):
     es = EarlyStoppingPlugin(patience=25, val_stream_name="train_stream")
 
     results = []
-    # model = SimpleMLP(num_classes=6)
     model = Classifier(in_dim=4, hidden_dim=8, out_dim=1)
-    print(model)
 
     if (strat == "naive"):
         print("Naive continual learning")
@@ -168,4 +156,4 @@ def avalanche_method(strat, i):
 
 
 if __name__ == '__main__':
-    avalanche_method(strat='naive', i=0)
+    avalanche_method(strat='ewc', i=0)
