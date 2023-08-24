@@ -35,6 +35,7 @@ class FeatureDataset(Dataset):
         return len(self.targets)
 
     def __getitem__(self, idx):
+        print(self.targets[idx])
         return self.data[idx], self.targets[idx]
 
 
@@ -42,15 +43,22 @@ class Classifier(nn.Module):
     def __init__(self, in_dim, hidden_dim, out_dim):
         super(Classifier, self).__init__()
         # print('init')
-        self.linear1 = nn.Linear(in_dim, hidden_dim)
-        # print(self.linear1.weight.dtype)
-        self.linear2 = nn.Linear(hidden_dim, out_dim)
-        # print(self.linear2.weight.dtype)
+        self.hidden = nn.Linear(in_dim, hidden_dim)
+        self.output = nn.Linear(hidden_dim, out_dim)
+
+        self.sigmoid = nn.Sigmoid()
+        self.softmax = nn.Softmax()
 
     def forward(self, x):
-        # print('forward')
-        x = torch.sigmoid(self.linear1(x))
-        x = self.linear2(x).flatten()
+        print('forward')
+        x = self.hidden(x)
+        print(x)
+        x = self.sigmoid(x)
+        print(x)
+        x = self.output(x)
+        print(x)
+        x = self.softmax(x).flatten()
+        print(x)
         return x
 
 
