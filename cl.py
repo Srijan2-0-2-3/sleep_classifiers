@@ -13,6 +13,7 @@ from avalanche.logging import InteractiveLogger, TextLogger, TensorboardLogger
 import pickle
 import torch.nn as nn
 import torch
+
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -107,9 +108,12 @@ model = Classifier(input_dim, hidden_dim, output_dim)
 #         val_accuracy = val_correct / total_samples
 #         print(
 #             f"Epoch {epoch + 1}/{num_epochs}, Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_accuracy:.4f}")
-
-scenario = dataset_benchmark([FeatureDataset('46343')],
-                             [FeatureDataset('46343')])
+subject_ids = SubjectBuilder.get_all_subject_ids()
+data_splits = TrainTestSplitter.leave_one_out(subject_ids)
+train_set = data_splits[0].training_set
+test_set = data_splits[0].testing_set
+scenario = dataset_benchmark([FeatureDataset(subject) for subject in train_set],
+                             [FeatureDataset(subject) for subject in test_set])
 
 tb_logger = TensorboardLogger()
 text_logger = TextLogger(open('wesadlog.txt', 'a'))
