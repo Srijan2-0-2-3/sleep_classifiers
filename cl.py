@@ -30,7 +30,9 @@ class FeatureDataset(Dataset):
             x.append(subject.feature_dictionary[feature])
 
         self.data = torch.tensor(np.transpose((np.array(x))), dtype=torch.float32)
+        print(self.data.shape)
         self.targets = torch.tensor(subject.labeled_sleep, dtype=torch.long)
+        print(self.targets.shape)
 
     def __len__(self):
         return len(self.targets)
@@ -50,7 +52,6 @@ class Classifier(nn.Module):
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
-
         x = self.hidden(x)
 
         x = self.sigmoid(x)
@@ -116,7 +117,7 @@ scenario = dataset_benchmark([FeatureDataset(subject) for subject in train_set],
                              [FeatureDataset(subject) for subject in test_set])
 
 tb_logger = TensorboardLogger()
-text_logger = TextLogger(open('wesadlog.txt', 'a'))
+text_logger = TextLogger(open('sleep_classifier_log.txt', 'a'))
 int_logger = InteractiveLogger()
 
 eval_plugin = EvaluationPlugin(
@@ -132,64 +133,68 @@ eval_plugin = EvaluationPlugin(
 
 es = EarlyStoppingPlugin(patience=25, val_stream_name="train_stream")
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+strats = ['naive', 'offline', 'replay', 'cumulative', 'lwf', 'ewc', 'episodic']
+# for strat in strats:
+strat = 'offline'
+if (strat == "naive"):
+    print("Naive continual learning")
+    strategy = Naive(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(),
+                     train_epochs=100, eval_every=1, plugins=[es], evaluator=eval_plugin, device=device)
+elif (strat == "offline"):
+    print("Offline learning")
+    strategy = JointTraining(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(),
+                             train_epochs=100, eval_every=1, plugins=[es], evaluator=eval_plugin, device=device)
+elif (strat == "replay"):
+    print("Replay training")
+    strategy = Replay(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(),
+                      train_epochs=100, eval_every=1, plugins=[es], evaluator=eval_plugin, device=device, mem_size=10,
+                      train_mb_size=10)  # 25% of WESAD
+elif (strat == "cumulative"):
+    print("Cumulative continual learning")
+    strategy = Cumulative(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(),
+                          train_epochs=100, eval_every=1, plugins=[es], evaluator=eval_plugin, device=device)
+elif (strat == "lwf"):
+    print("LwF continual learning")
+    strategy = LwF(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(), train_epochs=100,
+                   eval_every=1, plugins=[es], evaluator=eval_plugin, device=device, alpha=0.5, temperature=1)
+elif (strat == "ewc"):
+    print("EWC continual learning")
+    torch.backends.cudnn.enabled = False
+    strategy = EWC(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(), train_epochs=100,
+                   eval_every=1, plugins=[es], evaluator=eval_plugin, device=device, ewc_lambda=0.99)
+elif (strat == "episodic"):
+    print("Episodic continual learning")
+    strategy = GEM(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(), train_epochs=100,
+                   eval_every=1, plugins=[es], evaluator=eval_plugin, device=device, patterns_per_exp=70)
+
+thisresults = []
 results = []
-device = torch.device('cpu')
-strats = ['naive','offline','replay','cumulative','lwf','ewc','episodic']
-for strat in strats:
-    if (strat == "naive"):
-        print("Naive continual learning")
-        strategy = Naive(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(),
-                         train_epochs=1, eval_every=1, plugins=[es], evaluator=eval_plugin, device=device)
-    elif (strat == "offline"):
-        print("Offline learning")
-        strategy = JointTraining(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(),
-                                 train_epochs=1, eval_every=1, plugins=[es], evaluator=eval_plugin, device=device)
-    elif (strat == "replay"):
-        print("Replay training")
-        strategy = Replay(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(),
-                          train_epochs=1, eval_every=1, plugins=[es], evaluator=eval_plugin, device=device, mem_size=70,
-                          train_mb_size=70)  # 25% of WESAD
-    elif (strat == "cumulative"):
-        print("Cumulative continual learning")
-        strategy = Cumulative(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(),
-                              train_epochs=1, eval_every=1, plugins=[es], evaluator=eval_plugin, device=device)
-    elif (strat == "lwf"):
-        print("LwF continual learning")
-        strategy = LwF(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(), train_epochs=1,
-                       eval_every=1, plugins=[es], evaluator=eval_plugin, device=device, alpha=0.5, temperature=1)
-    elif (strat == "ewc"):
-        print("EWC continual learning")
-        torch.backends.cudnn.enabled = False
-        strategy = EWC(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(), train_epochs=1,
-                       eval_every=1, plugins=[es], evaluator=eval_plugin, device=device, ewc_lambda=0.99)
-    elif (strat == "episodic"):
-        print("Episodic continual learning")
-        strategy = GEM(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(), train_epochs=1,
-                       eval_every=1, plugins=[es], evaluator=eval_plugin, device=device, patterns_per_exp=70)
-
-    thisresults = []
-
+start = time.time()
+i = 0
+for experience in scenario.train_stream:
     start = time.time()
-    for experience in scenario.train_stream:
-        print(start)
-        res = strategy.train(experience)
-        r = strategy.eval(scenario.test_stream)
+    print(experience)
+    print(start)
+    res = strategy.train(experience)
+    r = strategy.eval(scenario.test_stream)
 
-        print(f"loss:{r['Loss_Exp/eval_phase/test_stream/Task000/Exp000']}")
-        thisresults.append({"loss": r["Loss_Exp/eval_phase/test_stream/Task000/Exp000"],
-                            "acc": (float(r["Top1_Acc_Exp/eval_phase/test_stream/Task000/Exp000"]) * 100),
-                            "forg": r["StreamForgetting/eval_phase/test_stream"],
-                            "all": r})
-    results.append({"strategy": 'replay',
-                    "finalloss": r["Loss_Exp/eval_phase/test_stream/Task000/Exp000"],
-                    "finalacc": r["Top1_Acc_Exp/eval_phase/test_stream/Task000/Exp000"],
-                    "results": thisresults})
-    elapsed = time.time() - start
-    results.append({"time": elapsed})
-    with open("sleep_classifier" + strat + "_results" + ".pkl", "wb") as outfile:
-        pickle.dump(results, outfile)
+    print(f"loss:{r['Loss_Exp/eval_phase/test_stream/Task000/Exp000']}")
+    print(f"acc: {r['Top1_Acc_Exp/eval_phase/test_stream/Task000/Exp000'] * 100}",
+          f"forg: {r['StreamForgetting/eval_phase/test_stream']}")
+    thisresults.append({"loss": r["Loss_Exp/eval_phase/test_stream/Task000/Exp000"],
+                        "acc": (float(r["Top1_Acc_Exp/eval_phase/test_stream/Task000/Exp000"]) * 100),
+                        "forg": r["StreamForgetting/eval_phase/test_stream"],
+                        "all": r})
+    with open(f'{strat}_{i}_sleep_classifier.pkl', 'ab') as f:
+        pickle.dump(thisresults, f)
+    i += 1
 
-
-results = pickle.load(open("wesad_replay_results.pkl", 'rb'), encoding='latin1')
-for result in results:
-    print(result)
+results.append({"strategy": 'replay',
+                "finalloss": r["Loss_Exp/eval_phase/test_stream/Task000/Exp000"],
+                "finalacc": r["Top1_Acc_Exp/eval_phase/test_stream/Task000/Exp000"],
+                "results": thisresults})
+elapsed = time.time() - start
+results.append({"time": elapsed})
+with open("sleep_classifier" + strat + "_results" + ".pkl", "wb") as outfile:
+    pickle.dump(results, outfile)
