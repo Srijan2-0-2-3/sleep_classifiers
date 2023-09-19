@@ -63,138 +63,111 @@ class Classifier(nn.Module):
         return x
 
 
-input_dim = 4
-hidden_dim = 8
-output_dim = 6
+def train_wesad(strat):
+    # device = torch.device('cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-model = Classifier(input_dim, hidden_dim, output_dim)
+    subject_ids = SubjectBuilder.get_all_subject_ids()
+    data_splits = TrainTestSplitter.leave_one_out(subject_ids)
+    train_set = data_splits[0].training_set
+    test_set = data_splits[0].testing_set
+    scenario = dataset_benchmark([FeatureDataset(subject) for subject in train_set],
+                                 [FeatureDataset(subject) for subject in test_set])
 
-# dataset = FeatureDataset('46343')
-#
-# val_size = int(0.2 * len(dataset))
-# train_size = len(dataset) - val_size
-# train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
-#
-# batch_size = 1
-# train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-# val_loader = DataLoader(val_dataset, batch_size=batch_size)
-#
-# criterion = nn.CrossEntropyLoss()
-# optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-#
-# num_epochs = 1
-# for epoch in range(num_epochs):
-#     model.train()
-#     for batch_X, batch_y in train_loader:
-#         optimizer.zero_grad()
-#         outputs = model(batch_X)
-#         loss = criterion(outputs, batch_y)
-#         loss.backward()
-#         optimizer.step()
-#
-#     model.eval()
-#     with torch.no_grad():
-#         val_loss = 0.0
-#         val_correct = 0
-#         total_samples = 0
-#         for batch_X, batch_y in val_loader:
-#             val_outputs = model(batch_X)
-#             val_loss += criterion(val_outputs, batch_y).item()
-#
-#             _, predicted = torch.max(val_outputs, 1)
-#             print(predicted)
-#             val_correct += (predicted == batch_y).sum().item()
-#             total_samples += len(batch_y)
-#
-#         val_accuracy = val_correct / total_samples
-#         print(
-#             f"Epoch {epoch + 1}/{num_epochs}, Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_accuracy:.4f}")
-subject_ids = SubjectBuilder.get_all_subject_ids()
-data_splits = TrainTestSplitter.leave_one_out(subject_ids)
-train_set = data_splits[0].training_set
-test_set = data_splits[0].testing_set
-scenario = dataset_benchmark([FeatureDataset(subject) for subject in train_set],
-                             [FeatureDataset(subject) for subject in test_set])
+    tb_logger = TensorboardLogger()
+    text_logger = TextLogger(open('sleep_classifier_mod.txt', 'a'))
+    int_logger = InteractiveLogger()
 
-tb_logger = TensorboardLogger()
-text_logger = TextLogger(open('sleep_classifier_log.txt', 'a'))
-int_logger = InteractiveLogger()
+    eval_plugin = EvaluationPlugin(
+        accuracy_metrics(minibatch=True, epoch=True, experience=True, stream=True),
+        loss_metrics(minibatch=True, epoch=True, experience=True, stream=True),
+        timing_metrics(epoch=True, epoch_running=True),
+        forgetting_metrics(experience=True, stream=True),
+        cpu_usage_metrics(experience=True),
+        # gpu_usage_metrics(0, experience=True),
+        disk_usage_metrics(minibatch=True, epoch=True, experience=True, stream=True),
+        loggers=[text_logger]
+    )
 
-eval_plugin = EvaluationPlugin(
-    accuracy_metrics(minibatch=True, epoch=True, experience=True, stream=True),
-    loss_metrics(minibatch=True, epoch=True, experience=True, stream=True),
-    timing_metrics(epoch=True, epoch_running=True),
-    forgetting_metrics(experience=True, stream=True),
-    cpu_usage_metrics(experience=True),
-    gpu_usage_metrics(0, experience=True),
-    disk_usage_metrics(minibatch=True, epoch=True, experience=True, stream=True),
-    loggers=[text_logger]
-)
+    es = EarlyStoppingPlugin(patience=25, val_stream_name="train_stream")
 
-es = EarlyStoppingPlugin(patience=25, val_stream_name="train_stream")
+    results = []
+    model = Classifier(in_dim=4, hidden_dim=8, out_dim=6)
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-strats = ['naive', 'offline', 'replay', 'cumulative', 'lwf', 'ewc', 'episodic']
-# for strat in strats:
-strat = 'offline'
-if (strat == "naive"):
-    print("Naive continual learning")
-    strategy = Naive(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(),
-                     train_epochs=100, eval_every=1, plugins=[es], evaluator=eval_plugin, device=device)
-elif (strat == "offline"):
-    print("Offline learning")
-    strategy = JointTraining(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(),
-                             train_epochs=100, eval_every=1, plugins=[es], evaluator=eval_plugin, device=device)
-elif (strat == "replay"):
-    print("Replay training")
-    strategy = Replay(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(),
-                      train_epochs=100, eval_every=1, plugins=[es], evaluator=eval_plugin, device=device, mem_size=10,
-                      train_mb_size=10)  # 25% of WESAD
-elif (strat == "cumulative"):
-    print("Cumulative continual learning")
-    strategy = Cumulative(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(),
-                          train_epochs=100, eval_every=1, plugins=[es], evaluator=eval_plugin, device=device)
-elif (strat == "lwf"):
-    print("LwF continual learning")
-    strategy = LwF(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(), train_epochs=100,
-                   eval_every=1, plugins=[es], evaluator=eval_plugin, device=device, alpha=0.5, temperature=1)
-elif (strat == "ewc"):
-    print("EWC continual learning")
-    torch.backends.cudnn.enabled = False
-    strategy = EWC(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(), train_epochs=100,
-                   eval_every=1, plugins=[es], evaluator=eval_plugin, device=device, ewc_lambda=0.99)
-elif (strat == "episodic"):
-    print("Episodic continual learning")
-    strategy = GEM(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(), train_epochs=100,
-                   eval_every=1, plugins=[es], evaluator=eval_plugin, device=device, patterns_per_exp=70)
+    if (strat == "naive"):
+        print("Naive continual learning")
+        strategy = Naive(model, Adam(model.parameters(), lr=0.0083, betas=(0.99, 0.99)), CrossEntropyLoss(),
+                         train_epochs=100, eval_every=1, plugins=[es], evaluator=eval_plugin, device=device)
+    elif (strat == "offline"):
+        print("Offline learning")
+        strategy = JointTraining(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(),
+                                 train_epochs=100, eval_every=1, plugins=[es], evaluator=eval_plugin, device=device)
+    elif (strat == "replay"):
+        print("Replay training")
+        strategy = Replay(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(),
+                          train_epochs=100, eval_every=1, plugins=[es], evaluator=eval_plugin, device=device,
+                          mem_size=70, train_mb_size=70)  # 25% of WESAD
+    elif (strat == "cumulative"):
+        print("Cumulative continual learning")
+        strategy = Cumulative(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(),
+                              train_epochs=100, eval_every=1, plugins=[es], evaluator=eval_plugin, device=device)
+    elif (strat == "lwf"):
+        print("LwF continual learning")
+        strategy = LwF(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(),
+                       train_epochs=100, eval_every=1, plugins=[es], evaluator=eval_plugin, device=device, alpha=0.5,
+                       temperature=1)
+    elif (strat == "ewc"):
+        print("EWC continual learning")
+        torch.backends.cudnn.enabled = False
+        strategy = EWC(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(),
+                       train_epochs=100, eval_every=1, plugins=[es], evaluator=eval_plugin, device=device,
+                       ewc_lambda=0.99)
+    elif (strat == "episodic"):
+        print("Episodic continual learning")
+        strategy = GEM(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(),
+                       train_epochs=100, eval_every=1, plugins=[es], evaluator=eval_plugin, device=device,
+                       patterns_per_exp=70)
 
-thisresults = []
-results = []
-start = time.time()
-i = 0
-for experience in scenario.train_stream:
+    thisresults = []
+
     start = time.time()
-    print(experience)
-    print(start)
-    res = strategy.train(experience)
-    r = strategy.eval(scenario.test_stream)
-
-    print(f"loss:{r['Loss_Exp/eval_phase/test_stream/Task000/Exp000']}")
-    print(f"acc: {r['Top1_Acc_Exp/eval_phase/test_stream/Task000/Exp000'] * 100}",
-          f"forg: {r['StreamForgetting/eval_phase/test_stream']}")
-    thisresults.append({"loss": r["Loss_Exp/eval_phase/test_stream/Task000/Exp000"],
+    if strat == "offline":
+        start1 = time.time()
+        print(start1)
+        res = strategy.train(scenario.train_stream)
+        r = strategy.eval(scenario.test_stream)
+        thisresults.append({"loss": r["Loss_Exp/eval_phase/test_stream/Task000/Exp000"],
+                            "acc": (float(r["Top1_Acc_Exp/eval_phase/test_stream/Task000/Exp000"]) * 100),
+                            "forg": r["StreamForgetting/eval_phase/test_stream"],
+                            "all": r})
+        results.append({"strategy": strat,
+                        "finalloss": r["Loss_Exp/eval_phase/test_stream/Task000/Exp000"],
+                        "finalacc": r["Top1_Acc_Exp/eval_phase/test_stream/Task000/Exp000"],
+                        "results": thisresults})
+        print(start1 - time.time())
+    else:
+        for experience in scenario.train_stream:
+            start1 = time.time()
+            print(start1)
+            res = strategy.train(experience)
+            r = strategy.eval(scenario.test_stream)
+            thisresults.append({"loss": r["Loss_Exp/eval_phase/test_stream/Task000/Exp000"],
                         "acc": (float(r["Top1_Acc_Exp/eval_phase/test_stream/Task000/Exp000"]) * 100),
                         "forg": r["StreamForgetting/eval_phase/test_stream"],
-                        "all": r})
-    with open(f'{strat}_{i}_sleep_classifier.pkl', 'ab') as f:
-        pickle.dump(thisresults, f)
-    i += 1
+                        "cpu_usage": r["CPUUsage_Exp/eval_phase/train_stream/Task000/Exp000"],
+                        "disk_usage": r["DiskUsage_Exp/eval_phase/train_stream/Task000/Exp000"],
+                        'time':time.time()-start1})
+            print(start1 - time.time())
+        results.append({"strategy": strat,
+                        "finalloss": r["Loss_Exp/eval_phase/test_stream/Task000/Exp000"],
+                        "finalacc": r["Top1_Acc_Exp/eval_phase/test_stream/Task000/Exp000"],
+                        "results": thisresults})
 
-results.append({"strategy": 'replay',
-                "finalloss": r["Loss_Exp/eval_phase/test_stream/Task000/Exp000"],
-                "finalacc": r["Top1_Acc_Exp/eval_phase/test_stream/Task000/Exp000"],
-                "results": thisresults})
-elapsed = time.time() - start
-results.append({"time": elapsed})
-with open("sleep_classifier" + strat + "_results" + ".pkl", "wb") as outfile:
-    pickle.dump(results, outfile)
+    elapsed = time.time() - start
+    results.append({"time": elapsed})
+    with open("results/sleep_classifier_" + strat + "_results"+".pkl", "wb") as outfile:
+        pickle.dump(results, outfile)
+    print("\t" + str(elapsed) + " seconds")
+
+strat = 'naive'
+train_wesad(strat)
