@@ -28,11 +28,8 @@ class FeatureDataset(Dataset):
         x = []
         for feature in subject.feature_dictionary.keys():
             x.append(subject.feature_dictionary[feature])
-
         self.data = torch.tensor(np.transpose((np.array(x))), dtype=torch.float32)
-        print(self.data.shape)
         self.targets = torch.tensor(subject.labeled_sleep, dtype=torch.long)
-        print(self.targets.shape)
 
     def __len__(self):
         return len(self.targets)
@@ -63,52 +60,14 @@ class Classifier(nn.Module):
         return x
 
 
+device = torch.device('cpu')
 input_dim = 4
 hidden_dim = 8
 output_dim = 6
 
 model = Classifier(input_dim, hidden_dim, output_dim)
 
-# dataset = FeatureDataset('46343')
-#
-# val_size = int(0.2 * len(dataset))
-# train_size = len(dataset) - val_size
-# train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
-#
-# batch_size = 1
-# train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-# val_loader = DataLoader(val_dataset, batch_size=batch_size)
-#
-# criterion = nn.CrossEntropyLoss()
-# optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-#
-# num_epochs = 1
-# for epoch in range(num_epochs):
-#     model.train()
-#     for batch_X, batch_y in train_loader:
-#         optimizer.zero_grad()
-#         outputs = model(batch_X)
-#         loss = criterion(outputs, batch_y)
-#         loss.backward()
-#         optimizer.step()
-#
-#     model.eval()
-#     with torch.no_grad():
-#         val_loss = 0.0
-#         val_correct = 0
-#         total_samples = 0
-#         for batch_X, batch_y in val_loader:
-#             val_outputs = model(batch_X)
-#             val_loss += criterion(val_outputs, batch_y).item()
-#
-#             _, predicted = torch.max(val_outputs, 1)
-#             print(predicted)
-#             val_correct += (predicted == batch_y).sum().item()
-#             total_samples += len(batch_y)
-#
-#         val_accuracy = val_correct / total_samples
-#         print(
-#             f"Epoch {epoch + 1}/{num_epochs}, Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_accuracy:.4f}")
+
 subject_ids = SubjectBuilder.get_all_subject_ids()
 data_splits = TrainTestSplitter.leave_one_out(subject_ids)
 train_set = data_splits[0].training_set
@@ -133,14 +92,13 @@ eval_plugin = EvaluationPlugin(
 
 es = EarlyStoppingPlugin(patience=25, val_stream_name="train_stream")
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 strats = ['naive', 'offline', 'replay', 'cumulative', 'lwf', 'ewc', 'episodic']
 # for strat in strats:
-strat = 'offline'
+strat = 'cumulative'
 if (strat == "naive"):
     print("Naive continual learning")
     strategy = Naive(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(),
-                     train_epochs=100, eval_every=1, plugins=[es], evaluator=eval_plugin, device=device)
+                     train_epochs=30, eval_every=1, plugins=[es], evaluator=eval_plugin, device=device)
 elif (strat == "offline"):
     print("Offline learning")
     strategy = JointTraining(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(),
@@ -148,12 +106,12 @@ elif (strat == "offline"):
 elif (strat == "replay"):
     print("Replay training")
     strategy = Replay(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(),
-                      train_epochs=100, eval_every=1, plugins=[es], evaluator=eval_plugin, device=device, mem_size=10,
+                      train_epochs=30, eval_every=1, plugins=[es], evaluator=eval_plugin, device=device, mem_size=10,
                       train_mb_size=10)  # 25% of WESAD
 elif (strat == "cumulative"):
     print("Cumulative continual learning")
     strategy = Cumulative(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(),
-                          train_epochs=100, eval_every=1, plugins=[es], evaluator=eval_plugin, device=device)
+                          train_epochs=30, eval_every=1, plugins=[es], evaluator=eval_plugin, device=device)
 elif (strat == "lwf"):
     print("LwF continual learning")
     strategy = LwF(model, Adam(model.parameters(), lr=0.005, betas=(0.99, 0.99)), CrossEntropyLoss(), train_epochs=100,
@@ -181,11 +139,15 @@ for experience in scenario.train_stream:
 
     print(f"loss:{r['Loss_Exp/eval_phase/test_stream/Task000/Exp000']}")
     print(f"acc: {r['Top1_Acc_Exp/eval_phase/test_stream/Task000/Exp000'] * 100}",
-          f"forg: {r['StreamForgetting/eval_phase/test_stream']}")
+          f"forg: {r['StreamForgetting/eval_phase/test_stream']}",
+          f"cpu usage: {r['CPUUsage_Exp/eval_phase/train_stream/Task000/Exp000']}",
+          f'disk_usage: {r["DiskUsage_Exp/eval_phase/train_stream/Task000/Exp000"]}')
     thisresults.append({"loss": r["Loss_Exp/eval_phase/test_stream/Task000/Exp000"],
                         "acc": (float(r["Top1_Acc_Exp/eval_phase/test_stream/Task000/Exp000"]) * 100),
                         "forg": r["StreamForgetting/eval_phase/test_stream"],
-                        "all": r})
+                        "cpu_usage": r["CPUUsage_Exp/eval_phase/train_stream/Task000/Exp000"],
+                        "disk_usage": r["DiskUsage_Exp/eval_phase/train_stream/Task000/Exp000"],
+                        "time":time.time()-start})
     with open(f'{strat}_{i}_sleep_classifier.pkl', 'ab') as f:
         pickle.dump(thisresults, f)
     i += 1
