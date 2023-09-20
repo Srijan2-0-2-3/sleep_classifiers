@@ -3,9 +3,12 @@ import matplotlib.pyplot as plt
 import warnings
 
 warnings.filterwarnings("ignore")
-datas = pickle.load(open('naive_1_sleep_classifier.pkl', 'rb'), encoding='latin1')
 
-print(datas)
+methods = {'replay': {},
+           'cumulative': {},
+           'lwf': {},
+           'ewc': {}}
+
 
 def traverse_dict_and_lists(data, indent=""):
     if isinstance(data, dict):
@@ -19,4 +22,30 @@ def traverse_dict_and_lists(data, indent=""):
     else:
         print(f"{indent}{data}")
 
-traverse_dict_and_lists(datas)
+
+loss = []
+cpu_usage = []
+acc = []
+forg = []
+disk_usage = []
+time = []
+for i in range(0, 30):
+    datas = pickle.load(open('replay_' + str(i) + '_sleep_classifier.pkl', 'rb'), encoding='latin1')
+    # print(datas)
+
+    loss.append(datas[i]['loss'])
+    acc.append(datas[i]['acc'])
+    forg.append(datas[i]['forg'])
+    cpu_usage.append(datas[i]['cpu_usage'])
+    disk_usage.append(datas[i]['disk_usage'])
+
+exp = [i for i in range(0, 30)]
+
+methods['replay']['loss'] = loss
+methods['replay']['acc'] = acc
+methods['replay']['forg'] = forg
+methods['replay']['cpu_usage'] = cpu_usage
+methods['replay']['disk_usage'] = disk_usage
+print(methods)
+plt.plot(exp, disk_usage)
+plt.savefig('disk_usage_sl.png')
