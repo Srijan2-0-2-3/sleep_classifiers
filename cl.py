@@ -62,17 +62,16 @@ class Classifier(nn.Module):
         return x
 
 
-
 def cl_method():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
 
     subject_ids = SubjectBuilder.get_all_subject_ids()
     data_splits = TrainTestSplitter.leave_one_out(subject_ids)
     train_set = data_splits[0].training_set
     test_set = data_splits[0].testing_set
-    scenario = dataset_benchmark([make_classification_dataset(FeatureDataset(subject)) for subject in train_set],
-                                 [make_classification_dataset(FeatureDataset(subject)) for subject in test_set])
+    train_set = [data_splits[i].training_set for i in range(len(subject_ids))]
+    test_set = [data_splits[i].testing_set for i in range(len(subject_ids))]
+
 
     tb_logger = TensorboardLogger()
     text_logger = TextLogger(open('sleep_classifier_log.txt', 'a'))
@@ -94,7 +93,7 @@ def cl_method():
     start2 = time.time()
     strats = ['naive', 'replay', 'cumulative', 'lwf', 'ewc', 'episodic']
     # for strat in strats:
-    strat = 'cumulative'
+    strat = 'naive'
     input_dim = 4
     hidden_dim = 8
     output_dim = 6
@@ -104,7 +103,7 @@ def cl_method():
         print("Naive continual learning")
         strategy = Naive(model, Adam(model.parameters(), lr=0.001, betas=(0.99, 0.99)), CrossEntropyLoss(),
                          train_epochs=100, eval_every=1, plugins=[es], evaluator=eval_plugin, device=device,
-                         train_mb_size=50, eval_mb_size=50)
+                         train_mb_size=64, eval_mb_size=64)
     elif (strat == "offline"):
         print("Offline learning")
         strategy = JointTraining(model, Adam(model.parameters(), lr=0.001, betas=(0.99, 0.99)), CrossEntropyLoss(),
@@ -143,31 +142,23 @@ def cl_method():
     results = []
     start1 = time.time()
     i = 0
+    for training_set,testing_set in zip(train_set,test_set):
+        scenario = dataset_benchmark([make_classification_dataset(FeatureDataset(subject)) for subject in train_set],
+                                     [make_classification_dataset(FeatureDataset(subject)) for subject in test_set])
+        for experience in scenario.train_stream:
+            start = time.time()
+            thisresults = []
+            print(experience)
+            print(start)
+            res = strategy.train(experience)
+            r = strategy.eval(scenario.test_stream)
 
-    for experience in scenario.train_stream:
-        start = time.time()
-        thisresults = []
-        print(experience)
-        print(start)
-        res = strategy.train(experience)
-        r = strategy.eval(scenario.test_stream)
+            thisresults.append(r)
+            print('time_taken', time.time() - start)
 
-        print(f"loss:{r['Loss_Exp/eval_phase/test_stream/Task000/Exp000']}")
-        print(f"acc: {r['Top1_Acc_Exp/eval_phase/test_stream/Task000/Exp000'] * 100}",
-              f"forg: {r['StreamForgetting/eval_phase/test_stream']}",
-              f"cpu usage: {r['CPUUsage_Exp/eval_phase/train_stream/Task000/Exp000']}",
-              f'disk_usage: {r["DiskUsage_Exp/eval_phase/train_stream/Task000/Exp000"]}')
-        thisresults.append({"loss": r["Loss_Exp/eval_phase/test_stream/Task000/Exp000"],
-                            "acc": (float(r["Top1_Acc_Exp/eval_phase/test_stream/Task000/Exp000"]) * 100),
-                            "forg": r["StreamForgetting/eval_phase/test_stream"],
-                            "cpu_usage": r["CPUUsage_Exp/eval_phase/train_stream/Task000/Exp000"],
-                            "disk_usage": r["DiskUsage_Exp/eval_phase/train_stream/Task000/Exp000"],
-                            "time": time.time() - start})
-        print('time_taken', time.time() - start)
-
-        with open(f'results/{strat}_{i}_sleep_classifier.pkl', 'ab') as f:
-            pickle.dump(thisresults, f)
-        i += 1
+            with open(f'results/{strat}_{i}_sleep_classifier.pkl', 'ab') as f:
+                pickle.dump(thisresults, f)
+            i += 1
 
     print(time.time() - start2)
 
